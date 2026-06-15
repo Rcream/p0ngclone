@@ -12,6 +12,7 @@ const SPEED_MULT = 1.07;
 const MAX_SPEED_MULT = 2.8;
 const MAX_ANGLE = 65 * Math.PI / 180;
 const REWIND_SPEED_MULT = 5;
+const WIN_SCORE = 5;
 
 const player = { x: MARGIN, y: H/2 - PH/2, w: PW, h: PH, score: 0 };
 const ai = { x: W - MARGIN - PW, y: H/2 - PH/2, w: PW, h: PH, score: 0 };
@@ -20,6 +21,7 @@ const ball = { x: W/2, y: H/2, r: BR, vx: 0, vy: 0, speed: BALL_SPEED_INIT };
 let state = 'start';
 let keys = {};
 let glitchTimeout = null;
+let gameWinner = null;
 
 function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath();
@@ -161,6 +163,41 @@ function drawStartScreen() {
   ctx.restore();
 }
 
+function drawGameOverScreen() {
+  drawBg();
+  drawPaddle(player, '#00ffff', 'rgba(0,255,255,0.5)');
+  drawPaddle(ai, '#ff00ff', 'rgba(255,0,255,0.5)');
+  drawScores();
+  ctx.save();
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+  ctx.fillRect(0, 0, W, H);
+  const cx = W / 2, cy = H / 2;
+  const isWin = gameWinner === 'player';
+  const title = isWin ? 'YOU WIN!' : 'YOU LOSE!';
+  const color = isWin ? '#00ffff' : '#ff00ff';
+  const glow = isWin ? 'rgba(0,255,255,0.5)' : 'rgba(255,0,255,0.5)';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = '56px "Press Start 2P", monospace';
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = 'rgba(255,0,0,0.3)';
+  ctx.fillText(title, cx + 3, cy - 50);
+  ctx.fillStyle = 'rgba(0,100,255,0.3)';
+  ctx.fillText(title, cx - 3, cy - 50);
+  ctx.shadowBlur = 30;
+  ctx.shadowColor = glow;
+  ctx.fillStyle = color;
+  ctx.fillText(title, cx, cy - 50);
+  ctx.shadowBlur = 0;
+  ctx.font = '20px "Press Start 2P", monospace';
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.fillText('Player ' + player.score + ' - ' + ai.score + ' AI', cx, cy + 30);
+  ctx.font = '14px "Press Start 2P", monospace';
+  ctx.fillStyle = 'rgba(255,255,255,' + (0.3 + 0.4 * Math.abs(Math.sin(Date.now() / 400))) + ')';
+  ctx.fillText('PRESS R TO RESTART', cx, cy + 90);
+  ctx.restore();
+}
+
 function handlePaddleHit(paddle) {
   const center = paddle.y + paddle.h / 2;
   const relHit = (ball.y - center) / (paddle.h / 2);
@@ -227,7 +264,7 @@ function update() {
   player.vy = 0;
   if (keys['w']) player.vy = -PADDLE_SPEED;
   if (keys['s']) player.vy = PADDLE_SPEED;
-  if (state === 'start') return;
+  if (state === 'start' || state === 'gameover') return;
   player.y += player.vy;
   player.y = Math.max(0, Math.min(H - player.h, player.y));
   const targetY = ball.y - ai.h / 2;
@@ -262,16 +299,29 @@ function update() {
   }
   if (ball.x + ball.r < 0) {
     ai.score++;
-    startRewind(-1);
+    if (ai.score >= WIN_SCORE) {
+      gameWinner = 'ai';
+      state = 'gameover';
+      noiseCanvas.classList.add('gameover');
+    } else {
+      startRewind(-1);
+    }
   }
   if (ball.x - ball.r > W) {
     player.score++;
-    startRewind(1);
+    if (player.score >= WIN_SCORE) {
+      gameWinner = 'player';
+      state = 'gameover';
+      noiseCanvas.classList.add('gameover');
+    } else {
+      startRewind(1);
+    }
   }
 }
 
 function render() {
   if (state === 'start') { drawStartScreen(); return; }
+  if (state === 'gameover') { drawGameOverScreen(); return; }
   drawBg();
   drawPaddle(player, '#00ffff', 'rgba(0,255,255,0.5)');
   drawPaddle(ai, '#ff00ff', 'rgba(255,0,255,0.5)');
@@ -310,6 +360,16 @@ setInterval(generateNoise, 80);
 document.addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
   keys[k] = true;
+  if (state === 'gameover' && k === 'r') {
+    player.score = 0;
+    ai.score = 0;
+    gameWinner = null;
+    noiseCanvas.classList.remove('gameover');
+    resetBall(Math.random() > 0.5 ? 1 : -1);
+    state = 'play';
+    if (k === 'w' || k === 's') e.preventDefault();
+    return;
+  }
   if (state === 'start') { state = 'play'; resetBall(Math.random() > 0.5 ? 1 : -1); }
   if (k === 'w' || k === 's') e.preventDefault();
 });
